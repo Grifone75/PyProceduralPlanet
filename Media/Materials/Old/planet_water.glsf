@@ -1,0 +1,137 @@
+			#version 130
+			#extension GL_EXT_texture_array : enable
+			
+			
+            uniform mat4 model_m;
+			uniform mat4 view_m;
+			uniform mat4 normal_m;
+			uniform mat4 proj_m;
+			uniform sampler2DArray wavetext;
+            uniform sampler2DArray heightmap;
+            uniform sampler2D refractiontexture;
+			uniform float planetheight, planetradius,sealevel,camdist,time;
+			in vec3 normal_i, posobj;
+			in vec4 psv,clipcoord;
+            in vec3 texturecoord,t_m,b_m,n_m;
+			in float polar, seapos, fnodescale,u,v;
+			attribute vec3 position;
+            attribute vec3 texcoord;
+			attribute float nodescale;
+
+            void main() {
+			
+				float uvm = 300.0;
+                float m;
+                float ndothv,halfv;
+				float Tk = 0.1;
+                vec4 color;
+				
+				mat3 tbn = mat3(t_m,b_m,n_m);
+				//retrieve height
+				m = clamp(texture2DArray(heightmap, texturecoord).w,0.00,1.0);
+			
+				//calculate perturbations for the water effects
+				float per1 =0.0; //afbm(normal_i*256+time*Tk,2);
+				
+				
+				//calculate mix for surface and border of land
+				float sea_border = 1.0; //smoothstep(m,sealevel,sealevel *(1-0.1/2));
+				float sea_border2 = 1.0-smoothstep(sealevel*0.9,sealevel,m);
+				//perturbate normal vector (only if far from sea border)
+				vec3 n = normalize( mat3(normal_m)*normal_i);
+
+				float mixsea = smoothstep(sealevel*0.95,sealevel*1.05,m);
+				
+				float polar2 = 0.8*polar;
+				
+				
+
+				float u10 = uvm*u-floor(uvm*u);
+				float v10 = uvm*v-floor(uvm*v);
+				
+				float u20 = uvm*10*u-floor(uvm*10*u);
+				float v20 = uvm*10*v-floor(uvm*10*v);
+				
+				//calculate sea surface normals
+				//in tangent space
+				vec3 offs = vec3(-0.01,0,0.01);
+				float d0 = mod(3*u10+v10,1);
+				float ti0 = mod(Tk*time,1);
+				vec3 uvcoord0 = vec3(d0,ti0,0);
+				
+				float d1 = mod(2*u10+v10,1);
+				float ti1 = mod(Tk*1.5*time,1);
+				vec3 uvcoord1 = vec3(d1,ti1,0);
+				
+				float d2 = mod(4*u10+v10,1);
+				float ti2 = mod(Tk*2.0*time,1);
+				vec3 uvcoord2 = vec3(d2,ti2,0);
+				
+				float d2a = mod(u10+2*v10,1);
+				float ti2a = mod(Tk*1.5*time,1);
+				vec3 uvcoord2a = vec3(d2a,ti2a,0);
+				
+				float d3 = mod(3*u20+v20,1);
+				float ti3 = mod(Tk*3.0*time,1);
+				vec3 uvcoord3 = vec3(d3,ti3,0);		
+
+				float d4 = mod(u20+v20,1);
+				float ti4 = mod(Tk*2.0*time,1);
+				vec3 uvcoord4 = vec3(d4,ti4,0);	
+				
+				vec4 s = 0.4*texture2DArray(wavetext,uvcoord0) + 0.4*texture2DArray(wavetext,uvcoord1)+0.2*texture2DArray(wavetext,uvcoord2)+0.05*texture2DArray(wavetext,uvcoord3)+0.05*texture2DArray(wavetext,uvcoord4)+texture2DArray(wavetext,uvcoord2a)*0.4;
+				//float s01 = texture2D(wavetext, uvcoord+offs.xy).z;
+				//float s21 = texture2D(wavetext, uvcoord+offs.zy).z;
+				//float s10 = texture2D(wavetext, uvcoord+offs.yx).z;
+				//float s12 = texture2D(wavetext, uvcoord+offs.yz).z;
+				
+				//vec3 vu = normalize(vec3(2.0,0.0,(s21-s01)*40.0));
+				//vec3 vv = normalize(vec3(0.0,2.0,(s12-s10)*40.0));
+				float sea_norm_amp = (1.3-camdist)*600;
+				vec3 vv = normalize(vec3(2.0,0.0,(-s.x)*sea_norm_amp));
+				vec3 vu = normalize(vec3(0.0,2.0,(s.x)*sea_norm_amp));
+				
+				vec3 norm_t = cross(vv,vu);
+				//vec4 bump = vec4(cross(vu,vv),s11);
+				//now in view space:
+				vec3 norm_v = normalize(norm_t);
+				
+				//calculate refractions
+				vec3 refractval = texture2D(refractiontexture,(clipcoord.xy/clipcoord.w+1)/2+norm_v.xy/50).xyz;
+				
+				
+				
+				//calculate light components
+				vec3 pixnorm = mat3(view_m)*tbn * normalize(norm_v);
+				vec3 finalnorm = normalize(gl_FragCoord.w*10*sea_border2*1*pixnorm + n);
+				vec3 l =  normalize( ( view_m*vec4(90000,0.0,0.0,1.0) - psv).xyz);
+				vec3 reflection = normalize(-reflect(l,finalnorm));
+				vec3 eye = normalize(-psv.xyz);
+
+                float intensity = clamp(dot(l, finalnorm),0.0,1.0);	
+				
+				vec3 specular = vec3(1.0,1.0,1.0)*clamp(pow(max(dot(reflection,eye),0.0),20.0),0.0,1.0);
+				
+				float dir_transparency = clamp(pow(dot(n,eye),3),0.0,0.75);
+				float depth_transparency = 1.0-clamp(((0.95-1)/(sealevel*(1-0.8)))*(m-0.8*sealevel)+1,0.0,1.0);
+				float opacity = 1.0-10*dir_transparency*depth_transparency;
+				
+				float sea_alpha = smoothstep(1.0-mixsea,0.0,clamp((camdist-1.2)/0.1,0.0,1.0))*opacity;
+				
+				//calculate color using varios methods
+				//color = vec4(polar,1.0,1.0,1.0); // color by polar value
+				color = vec4(refractval,1.0);
+				//color = mix(vec4(0.8,0.8,0.8,sea_alpha),vec4(0.0,m,0.2+m*0.2,sea_alpha),sea_border); // color blue
+				//color = vec4(s11,0.0,0.1,1.0); // color by height
+				//color = vec4(texturecoord.st,0.0,1.0); // color by texture coords
+				//if (u<10000) {
+				//color = vec4(s.z,0.0,0.0,1.0);
+				//color = vec4(u10,v10,0.0,1.0); //color by uv coords
+				//color = vec4(finalnorm,1.0);
+				//}
+				//color = vec4(n,1.0); // color by normals
+
+                color.rgb = color.rgb*(0.1+intensity)+specular;
+
+				gl_FragColor = vec4(color.rgb,sea_alpha+0.0000001*fnodescale);
+            }

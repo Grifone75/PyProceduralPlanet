@@ -1,0 +1,226 @@
+			//#version 130
+			#extension GL_EXT_texture_array : enable
+			
+			vec3 mod289(vec3 x) {
+              return x - floor(x * (1.0 / 289.0)) * 289.0;
+            }
+            
+            vec4 mod289(vec4 x) {
+              return x - floor(x * (1.0 / 289.0)) * 289.0;
+            }
+            
+            vec4 permute(vec4 x) {
+                 return mod289(((x*34.0)+1.0)*x);
+            }
+            
+            vec4 taylorInvSqrt(vec4 r)
+            {
+              return 1.79284291400159 - 0.85373472095314 * r;
+            }
+            
+            float snoise(vec3 v)
+              { 
+              const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+              const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+            
+            // First corner
+              vec3 i  = floor(v + dot(v, C.yyy) );
+              vec3 x0 =   v - i + dot(i, C.xxx) ;
+            
+            // Other corners
+              vec3 g = step(x0.yzx, x0.xyz);
+              vec3 l = 1.0 - g;
+              vec3 i1 = min( g.xyz, l.zxy );
+              vec3 i2 = max( g.xyz, l.zxy );
+            
+              //   x0 = x0 - 0.0 + 0.0 * C.xxx;
+              //   x1 = x0 - i1  + 1.0 * C.xxx;
+              //   x2 = x0 - i2  + 2.0 * C.xxx;
+              //   x3 = x0 - 1.0 + 3.0 * C.xxx;
+              vec3 x1 = x0 - i1 + C.xxx;
+              vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+              vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+            
+            // Permutations
+              i = mod289(i); 
+              vec4 p = permute( permute( permute( 
+                         i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                       + i.y + vec4(0.0, i1.y, i2.y, 1.0 )) 
+                       + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+            
+            // Gradients: 7x7 points over a square, mapped onto an octahedron.
+            // The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+              float n_ = 0.142857142857; // 1.0/7.0
+              vec3  ns = n_ * D.wyz - D.xzx;
+            
+              vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+            
+              vec4 x_ = floor(j * ns.z);
+              vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+            
+              vec4 x = x_ *ns.x + ns.yyyy;
+              vec4 y = y_ *ns.x + ns.yyyy;
+              vec4 h = 1.0 - abs(x) - abs(y);
+            
+              vec4 b0 = vec4( x.xy, y.xy );
+              vec4 b1 = vec4( x.zw, y.zw );
+            
+              //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+              //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+              vec4 s0 = floor(b0)*2.0 + 1.0;
+              vec4 s1 = floor(b1)*2.0 + 1.0;
+              vec4 sh = -step(h, vec4(0.0));
+            
+              vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+              vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+            
+              vec3 p0 = vec3(a0.xy,h.x);
+              vec3 p1 = vec3(a0.zw,h.y);
+              vec3 p2 = vec3(a1.xy,h.z);
+              vec3 p3 = vec3(a1.zw,h.w);
+            
+            //Normalise gradients
+              vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+              p0 *= norm.x;
+              p1 *= norm.y;
+              p2 *= norm.z;
+              p3 *= norm.w;
+            
+            // Mix final noise value
+              vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+              m = m * m;
+              return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1), 
+                                            dot(p2,x2), dot(p3,x3) ) );
+              }
+			  
+			uniform mat4 u_model;
+			uniform mat4 u_view;
+			uniform mat4 u_normal;
+			uniform mat4 u_proj;
+			varying vec3 normal_i,halfVector;
+			varying vec3 posit,posobj;
+            varying vec3 texturecoord;
+            varying vec2 txc2;
+			varying float polar, fnodescale,u,v,scale;
+			uniform sampler2D surfacecolor;
+            uniform sampler2DArray heightmap,surface;
+            uniform vec3 u_lposition3,u_lintensity3;
+			uniform float planet_height, planet_radius,sea_level,camdist;
+			
+            void main() {
+            
+            	float normscale = 1.0;
+
+				float uvm = 30000.0;
+            	float u10 = uvm*u-floor(uvm*u);
+				float v10 = uvm*v-floor(uvm*v);
+            	
+                float ndothv,halfv,slope;
+				
+                vec4 color;
+                vec4 hnorm = texture2DArray(heightmap, texturecoord);
+				vec3 encodednorm = hnorm.xyz*2.0-1.0;
+				
+				vec3 tcolor = texture2DArray(surface,vec3(vec2(u10,v10),0));
+				vec3 scolor = texture2DArray(surface,vec3(vec2(u10,v10),1));
+				
+                vec3 n = normalize(mat3(u_normal)  * (encodednorm));
+                
+				vec3 sn = normalize( mat3(u_normal)  *normal_i);
+				
+				
+				
+				
+				//calculate height
+				float m = clamp(hnorm.w,0.0,1.0);
+				
+				
+
+				slope = clamp((1.0-abs(dot(encodednorm,normal_i)))*5.0/normscale,0.0,1.0);	
+
+				
+				
+				float polar2 = 0.8*polar+0.2*(snoise(posobj)+snoise(posobj*2)/2+snoise(posobj*4)/4+snoise(posobj*8)/8);
+				polar2 = smoothstep(0.7,0.8,polar);
+				float polar3 = 1.0-smoothstep(0.0,0.1,polar);
+				
+				float landheight = clamp(m - sea_level,0.1,1.0)/(1-sea_level);
+				float sea_border2 = 1.0-smoothstep(sea_level*0.95,sea_level,m);
+				
+				//calculate color using varios methods
+				//color = (1-polar)*texture2D(surfacecolor,vec2(slope,1-landheight))+polar*(1.0,1.0,1.0); //color by polar mix, using slope and height
+				//color = texture2D(surfacecolor,vec2(polar2,1-m)); // color by polar and height
+				//color = (1-polar)*texture2D(surfacecolor,vec2(0.0,1-m))+polar*(1.0,1.0,1.0); // color by polar mix, using surface color and white
+				//color = vec4(polar,1.0,1.0,1.0); // color by polar value
+				//color = vec4(1.0,1.0,1.0,1.0); // color white
+				//color = vec4(m,0.1,0.2,1.0); // color by height
+				//color = vec4(slope,0.1,0.1,1.0); // color by slope
+				//color = vec4(texturecoord.st,0.0,1.0); // color by texture coords
+				//color = vec4(texture2DArray(heightmap, texturecoord).xyz,1.0); // color by normal map
+				
+				//variant using the slope to correct the color
+				float slopemix = smoothstep(0.8,0.9,slope);
+				color = texture2D(surfacecolor,vec2(0,1-landheight)); //using slope and height
+				// equatorial mod
+				color.rgb = mix(color.rgb,vec3(0.3,0.1,0.0),polar3);
+                
+				color = (1-slopemix)*color+slopemix*vec4(tcolor,1.0); //vec4(0.3*(1.2*landheight+1.1),0.2*(1.2*landheight+1.1),0.2*(1.5*landheight),1.0);
+				//color = (1-slopemix)*color+slopemix*vec4(color.rgb*tcolor.r,1.0);
+				float shallow_water = clamp((m-0.8*sea_level)/(0.2*sea_level+0.01),0.0,1.0);
+				vec3 color_sea = mix(vec3(0.0,0.0,0.1),vec3(0.0,0.5,0.3),shallow_water);		
+				//vec3(0.0,m,0.2+m*0.2);
+				
+				//border between sea and ground
+				float mixsea = step(sea_level,m);
+				//factor for beaches: small range of altitude over sea level, and low slope 
+				float mixbeach = smoothstep(sea_level*0.9,sea_level*1.2,m+snoise(posobj)*0.1);
+				//mixing up
+				
+				//add beach color
+				vec3 beach_color = mix(vec3(0.9,0.9,0.7),vec3(0.3,0.3,0.25),slopemix);
+				beach_color = scolor;
+				color.rgb = mix(beach_color,color.rgb,mixbeach);
+				//polar & equatorial mod
+				color.rgb = mix(color.rgb,vec3(0.9,0.9,1.0),polar2);
+				
+				
+				//if under water fade to blue/green
+				color.rgb = mix(color.rgb,color_sea,(1-mixsea)*sea_border2);
+				//if under water fade the normal with the depth TEST
+				n = mix(n,sn,(1-mixsea)*pow(1-shallow_water,1.0));
+
+				float cam_near = 1-clamp((camdist-1.1)/0.1,0.0,1.0);
+				
+				//mix between a ocean normal (from sphere) and terrain normal based on camera distance (if we are near and
+				// ocean is rendered, we don't want spherical norm but terrain norm)
+				vec3 nf = mix(mix(sn,n,mixsea),n,cam_near);
+				
+				
+				//calculate light components
+				vec3 l = normalize( ( u_view*vec4(u_lposition3,1.0) - posit).xyz);
+				vec3 reflection = normalize(-reflect(l,nf));
+				vec3 eye = normalize(-posit.xyz);
+				
+				float intensity = clamp(dot(l, nf),0.0,1.0);
+				float spherelight = clamp(dot(l,sn),0.0,1.0);
+				float radiosityhack = spherelight*clamp(-dot(l, nf)/5.0,0.0,1.0);
+				intensity += radiosityhack;
+				float ambient = abs(dot(l,sn))*0.05;
+
+				vec3 specular = u_lintensity3*clamp(pow(max(dot(reflection,eye),0.0),20.0),0.0,1.0)*(1-mixsea)*(1-cam_near);				
+				
+                    color.rgb = color.rgb*(ambient+intensity*0.9)+specular;
+                    
+                    //hack for the atmosphere...
+					vec3 aircolor = mix(vec3(0.0,0.0,0.0),vec3(0.3,0.3,0.7),spherelight);
+                    color.rgb = mix(color.rgb,aircolor,clamp(sqrt(dot(posit.xyz,posit.xyz))*0.00001,0.0,0.6));
+                    //halfv = normalize(halfVector);
+                    //ndothv = max(dot(n,halfv),0.0);
+                    //color += 0.1*gl_LightSource[0].specular * pow(ndothv,0.1);
+				if (sea_level == 200.0){
+					color.r = txc2.x;
+				}
+
+				gl_FragColor = vec4(color.rgb,1.0);
+
+            }

@@ -1,0 +1,13 @@
+attribute vec3 position;
+varying vec3 pos;
+uniform mat3 rotcubev;
+uniform float hmap_border_factor,hmap_dx,hmap_dy,patchscale;
+uniform int level;
+            void main() {
+				
+                gl_Position = gl_ModelViewProjectionMatrix * vec4(position,1.0);
+
+				vec2 offset = vec2(hmap_dx,hmap_dy);
+				
+                pos = vec3(position.xy*(patchscale+hmap_border_factor)+offset,-position.z);
+            }

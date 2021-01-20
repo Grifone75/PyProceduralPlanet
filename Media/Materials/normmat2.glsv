@@ -1,0 +1,15 @@
+attribute vec3 position;
+attribute vec3 texcoord;
+varying vec3 pos;
+uniform mat3 rotcubev;
+uniform int cubefacedebug;
+uniform sampler2D texture;
+uniform float planet_height, planet_radius;
+uniform vec2 patchcenter;
+uniform float patchscale;
+
+            void main() {
+                gl_Position = gl_ModelViewProjectionMatrix * vec4(position,1.0);
+				gl_TexCoord[0] = vec4((texcoord.s*(512.0/514.0))+(1.0/514.0),(texcoord.t*(512.0/514.0))+(1.0/514.0),1.0,1.0);
+                pos = gl_Position;
+            }

@@ -1,0 +1,10 @@
+
+            varying vec3 pos;
+			uniform mat3 rotcubev;
+			uniform sampler2D texture;
+            void main() {
+
+                gl_FragColor = vec4(texture2D(texture,gl_TexCoord[0]).w,texture2D(texture,gl_TexCoord[0]).w,0.0,texture2D(texture,gl_TexCoord[0]).w);
+				
+
+            }

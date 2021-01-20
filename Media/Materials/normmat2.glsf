@@ -1,0 +1,85 @@
+
+            varying vec3 pos;
+			uniform mat3 rotcubev;
+			uniform int cubefacedebug;
+			uniform sampler2D texture;
+			uniform float planet_height, planet_radius;
+			uniform vec2 patchcenter;
+			uniform float patchscale;
+			uniform int level;
+            void main() {
+
+			
+				double normscale = 1.0;
+				
+				
+				double ipatch = pow(2,level);
+				double ipatchx = pow(1.8,level);
+				double pscale = 1.0/ipatch;
+				float offh = 1.0;
+				float scale = planet_height/planet_radius;
+				//calculate delta on texcoords
+				vec2 ds = vec2(0.0009,0.00);
+				vec2 dt = vec2(0.00,0.0009);
+				
+				float tex_scale = 512.0/514.0;
+				float tex_off = 1.0/514.0;
+				
+				vec2 st0 = gl_TexCoord[0].st;//*tex_scale+tex_off;
+				vec2 stds = st0+ds;
+				vec2 stdt = st0+dt;
+				vec2 stdsm = st0-ds;
+				vec2 stdtm = st0-dt;
+				
+				dvec3 sth0 = vec3(st0,scale * (texture2D(texture,st0).w)+offh);
+				dvec3 sthds = vec3(stds,scale * (texture2D(texture,stds).w)+offh);
+				dvec3 sthdt = vec3(stdt,scale * (texture2D(texture,stdt).w)+offh);
+				dvec3 sthdsm = vec3(stdsm,scale * (texture2D(texture,stdsm).w)+offh);
+				dvec3 sthdtm = vec3(stdtm,scale * (texture2D(texture,stdtm).w)+offh);
+				
+				
+				//apply the jacobian for spherical tangents
+				//float h = texture2D(texture,gl_TexCoord[0]).w;
+
+
+				double h0 =  texture2D(texture,st0).w;
+				double h =  scale * (h0)+offh;
+				double s = ((gl_TexCoord[0].s*2-1.0)*pscale)+patchcenter[0];
+				double t = ((gl_TexCoord[0].t*2-1.0)*pscale)+patchcenter[1];
+				double s2 = s*s;
+				double t2 = t*t;
+				double iw = 1.0/sqrt(float(s2+t2+1.0));
+				double iw2 = iw*iw;
+				double iw3 = iw*iw2;
+				double hiw = h* iw;
+				double hiw3 = h * iw3;
+				
+				dmat3 J = dmat3(hiw * (1.0 - s2 * iw2), -s*t * hiw3, -s * hiw3,
+										-s*t * hiw3, hiw * (1.0 - t2 * iw2), -t * hiw3,
+								 s * iw,   t * iw,    iw);
+								
+				//enter values bycolumn 
+				vec3 d1 = sthds-sthdsm;
+				vec3 d2 = sthdt-sthdtm;
+				
+				
+				//d1.z *= sqrt(float(ipatch));
+				//d2.z *= sqrt(float(ipatch));
+				d1.z *= ipatch;
+				d2.z *= ipatch;
+				ds *= float(level+1);
+				
+				//compute norm
+				//vec3 norm = normalize(cross( normalize((sthds-sth0)), normalize((sthdt-sth0))));
+				//vec3 norm = normalize( rotcubev * cross(  normalize(vec3(J*d1)), normalize(vec3( J*d2))));
+				vec3 norm =  normalize( rotcubev * cross(  normalize(vec3(J*vec3(2*ds,normscale*d1.z))), normalize(vec3(J*vec3(2*dt,normscale*d2.z)))));
+				//rotcubev *   J*  J* 
+				
+				vec3 encodednorm = ((norm+1.0)/2.0);
+				
+
+				//write final texture in form norm,height
+				gl_FragColor = vec4(encodednorm,h0);
+				
+
+            }

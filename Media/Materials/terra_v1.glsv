@@ -1,0 +1,92 @@
+
+			//#version 130
+			#extension GL_EXT_texture_array : enable
+              
+            vec3 cube2sphere(vec3 p)
+            {
+                float x2,y2,z2,xs,ys,zs;
+                x2 = p.x*p.x;
+                y2 = p.y*p.y;
+                z2 = p.z*p.z;
+                // sphericize
+                xs = p.x * sqrt(1.0-(y2*0.5)-(z2*0.5)+(y2*z2/3.0));
+                ys = p.y * sqrt(1.0-(z2*0.5)-(x2*0.5)+(z2*x2/3.0));
+                zs = p.z * sqrt(1.0-(x2*0.5)-(y2*0.5)+(x2*y2/3.0));
+                return vec3(xs,ys,zs);
+            }
+            
+
+            uniform mat4 u_model;
+			uniform mat4 u_view;
+			uniform mat4 u_normal;
+			uniform mat4 u_proj;
+            varying vec3 posit,normal_i, posobj;
+            attribute vec3 position;
+            attribute vec3 texcoord;
+			attribute float nodescale;
+			attribute vec2 texcoord2;
+            varying vec3 texturecoord;
+            varying vec2 txc2;
+			varying float polar, fnodescale,u,v,scale,tangent_arc;
+			varying vec3 center;
+			uniform sampler2D surfacecolor;
+			uniform sampler2DArray heightmap;
+            uniform float planet_height, planet_radius,sea_level,camdist;
+            uniform float skirt_off;
+            uniform int state;
+            uniform float verse;
+
+            void main() 
+            {
+                //normal = gl_NormalMatrix * gl_Normal;
+                //gl_Position = gl_ModelViewProjectionMatrix * vec4(position,1.0);
+                float x;
+                float y;
+                float z;
+                float x2,y2,z2;
+                float n,n2,n4,n8,pds,pdt;
+                vec2 ds,dt;
+                vec3 ps,posnew;
+				
+				scale = planet_height/planet_radius;
+
+				if (state == 0) {
+					n = texture2DArray(heightmap,texcoord).w;
+				}
+				else {
+				 n = 0;
+				}
+
+				
+                ps = cube2sphere(position);
+				//ps = position;
+   
+				polar = (ps.y*ps.y);
+				float lon = atan(ps.x,ps.z);
+				float lat = ps.z;
+				u = 0.5+lon/6.28318530717958;
+				v = 0.5-asin(ps.y)/3.141592653589793;
+
+                //calcolate normal based on sphere
+				//normal_i = gl_NormalMatrix * normalize(ps);
+				normal_i =  normalize(ps);
+				
+                posnew = ps*(1+((1.0-verse)*sea_level*planet_height/planet_radius)+verse*planet_height*n/planet_radius)*mix(nodescale+(1.0-nodescale)*(1.0-verse),1.0,skirt_off);
+                
+				posobj = ps;
+				fnodescale = nodescale;
+                texturecoord = texcoord;
+                txc2 = texcoord2;
+                mat4 mv = u_view*u_model;
+				posit =   mv * vec4(posnew,1.0);
+				center = mv[3].xyz;
+				tangent_arc = 1.0/camdist;
+                gl_Position = u_proj * mv *vec4(posnew,1.0);
+				
+                gl_Position.z = log2(max(1e-6, 1.0 + gl_Position.w)) * 0.11357410639-1.0;
+                gl_Position.z *= gl_Position.w;
+ 
+				
+                
+
+            }

@@ -1,0 +1,124 @@
+
+			#version 130
+			#extension GL_EXT_texture_array : enable
+              
+            vec3 cube2sphere(vec3 p)
+            {
+                float x2,y2,z2,xs,ys,zs;
+                x2 = p.x*p.x;
+                y2 = p.y*p.y;
+                z2 = p.z*p.z;
+                // sphericize
+                xs = p.x * sqrt(1.0-(y2*0.5)-(z2*0.5)+(y2*z2/3.0));
+                ys = p.y * sqrt(1.0-(z2*0.5)-(x2*0.5)+(z2*x2/3.0));
+                zs = p.z * sqrt(1.0-(x2*0.5)-(y2*0.5)+(x2*y2/3.0));
+                return vec3(xs,ys,zs);
+            }
+            
+
+            uniform mat4 model_m;
+			uniform mat4 view_m;
+			uniform mat4 normal_m;
+			uniform mat4 proj_m;
+			uniform sampler2DArray wavetext;
+			uniform sampler2DArray heightmap;
+            uniform float planetheight, planetradius,sealevel,camdist,time;
+            out vec3 normal_i, posobj;
+			out vec4 psv, clipcoord;
+            out vec3 texturecoord,t_m,b_m,n_m;
+			out float polar, seapos, fnodescale,u,v;
+			attribute vec3 position;
+            attribute vec3 texcoord;
+			attribute float nodescale;
+			
+            void main() 
+            {
+           
+				float uvm = 300.0;
+				float Tk = 0.1;
+                float x;
+                float y;
+                float z;
+                float x2,y2,z2;
+                float n,n2,n4,n8,pds,pdt;
+                vec2 ds,dt;
+                vec3 ps,posnew;
+
+	
+				float m = clamp(texture2DArray(heightmap,texcoord).w,0.0,1.0);
+				float sea_border2 = 1.0-smoothstep(sealevel*0.9,sealevel,m);
+				
+                ps = cube2sphere(position);
+   
+				polar = (ps.y*ps.y);
+				float lon = atan(ps.x,ps.z);
+				float lat = ps.z;
+				
+				u = 0.5+lon/6.28318530717958;
+				v = 0.5-asin(ps.y)/3.141592653589793;
+				
+				float u10 = uvm*u-floor(uvm*u);
+				float v10 = uvm*v-floor(uvm*v);
+				
+				float u20 = uvm*10*u-floor(uvm*10*u);
+				float v20 = uvm*10*v-floor(uvm*10*v);
+				
+				float d0 = mod(3*u10+v10,1);
+				float ti0 = mod(Tk*time,1);
+				vec3 uvcoord0 = vec3(d0,ti0,0);
+				
+				float d1 = mod(2*u10+v10,1);
+				float ti1 = mod(Tk*1.5*time,1);
+				vec3 uvcoord1 = vec3(d1,ti1,0);
+				
+				float d2 = mod(4*u10+v10,1);
+				float ti2 = mod(Tk*2.0*time,1);
+				vec3 uvcoord2 = vec3(d2,ti2,0);
+				
+				float d2a = mod(u10+2*v10,1);
+				float ti2a = mod(Tk*1.5*time,1);
+				vec3 uvcoord2a = vec3(d2a,ti2a,0);
+
+				float d3 = mod(3*u20+v20,1);
+				float ti3 = mod(Tk*3.0*time,1);
+				vec3 uvcoord3 = vec3(d3,ti3,0);		
+
+				float d4 = mod(u20+v20,1);
+				float ti4 = mod(Tk*2.0*time,1);
+				vec3 uvcoord4 = vec3(d4,ti4,0);					
+				
+				normal_i =  normalize(ps);
+				
+				//calculate tb vectors
+				vec3 yplus = vec3(0.0,1.0,0.0);
+				vec3 b = yplus - (dot(yplus,normal_i)/dot(normal_i,normal_i)*normal_i);
+				vec3 t = cross(b,normal_i);
+				
+				//calculate tbn matrix 
+				vec4 ps4 = vec4(ps,1.0);
+				 n_m = normalize(mat3(model_m)*normal_i);
+				 t_m = normalize(mat3(model_m)*b);
+				 b_m = normalize(mat3(model_m)*t);
+
+				//calculate vertex vector in view space
+				psv = (view_m * model_m * ps4);
+				
+				
+				//lightdir.x = dot(temp,t_view);
+				//lightdir.y = dot(temp,b_view);
+				//lightdir.z = dot(temp,n_view);
+
+	
+				seapos = texture2DArray(wavetext,uvcoord0).z*0.04+texture2DArray(wavetext,uvcoord1).z*0.04+texture2DArray(wavetext,uvcoord2a).z*0.04+texture2DArray(wavetext,uvcoord2).z*0.02+texture2DArray(wavetext,uvcoord3).z*0.005+texture2DArray(wavetext,uvcoord4).z*0.005;
+				//texture2DArray(wavetext,uvcoord1).z*0.+texture2DArray(wavetext,uvcoord2).z*0;
+				
+                posnew = ps*(1+planetheight*(sealevel+seapos*sea_border2)/planetradius);
+                
+				posobj = ps;
+				fnodescale = nodescale;
+                texturecoord = texcoord;
+                clipcoord = proj_m  * view_m * model_m * vec4(posnew,1.0);
+                gl_Position = clipcoord;
+
+
+            }

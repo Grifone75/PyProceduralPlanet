@@ -1,0 +1,25 @@
+varying vec3 normal,halfVector,color3;
+            varying vec2 texturecoord;
+            uniform sampler2D colorMap;
+            void main() {
+                float intensity;
+                float ndothv,halfv;
+
+                vec4 color;
+                vec3 n = normal;
+                vec3 l = normalize(gl_LightSource[0].position).xyz;
+            
+                color = vec4(color3,1.0);
+                
+                intensity = max(dot(l, n),0.0);
+
+                    color *= 5*intensity;
+                    //halfv = normalize(halfVector);
+                    //ndothv = max(dot(n,halfv),0.0);
+                    //color += 0.1*gl_LightSource[0].specular * pow(ndothv,0.1);
+
+
+                gl_FragColor = texture2D(colorMap, texturecoord)*color;
+            
+                //gl_FragColor = vec4(normal,1);
+            }
